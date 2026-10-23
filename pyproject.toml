@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 aic-connector = "aic_connector.server:main"
 aic-gateway = "aic_connector.gateway:main"
+aic-setup = "aic_connector.setup_wizard:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

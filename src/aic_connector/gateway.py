@@ -26,6 +26,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from aic_connector.core import StateStore
+from aic_connector.oauth_metadata import OAuthChallengeMiddleware, register_oauth_metadata_routes
 from aic_connector.server import register_tools
 
 logger = logging.getLogger(__name__)
@@ -297,6 +298,7 @@ def create_gateway(config: GatewayConfig | None = None) -> MCPServer:
     )
     user_stores = UserScopedStores()
     register_tools(server, user_stores.current)
+    register_oauth_metadata_routes(server, cfg)
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
@@ -314,6 +316,7 @@ def create_gateway_app(config: GatewayConfig | None = None):
         max_request_body_size=1_048_576,
     )
     app.add_middleware(RateLimitMiddleware, requests_per_minute=120, max_clients=4096)
+    app.add_middleware(OAuthChallengeMiddleware, config=cfg)
     if cfg.allowed_origins:
         from starlette.middleware.cors import CORSMiddleware
 
