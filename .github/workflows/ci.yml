@@ -32,5 +32,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e .
       - name: Run core unit tests
         run: python -m unittest discover -s tests -v
+      - name: Import MCP server
+        run: python -c "from aic_connector.server import mcp; assert mcp is not None; print('MCP server import OK')"
       - name: Compile Python files
         run: python -m compileall -q src tests
