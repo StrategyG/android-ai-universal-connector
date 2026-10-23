@@ -2,28 +2,43 @@
 
 Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat berinteraksi dengan layanan digital dan perangkat Android melalui antarmuka standar, kontrol kebijakan, dan persetujuan manusia.
 
-> **Status saat ini: P0 foundation, belum menjadi plugin mobile yang siap produksi.** Branch ini menambahkan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, dan unit test. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada OAuth flow, belum ada aplikasi Android, dan belum ada remote MCP deployment.
+> **Status saat ini: P0 lulus CI; gateway remote masih prototipe dan belum dideploy.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, serta prototipe gateway Streamable HTTP yang memvalidasi bearer token melalui OAuth token introspection. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada konfigurasi identity provider nyata, belum ada aplikasi Android, dan belum ada deployment staging/production.
+
+## Arsitektur adapter multi-aplikasi
+
+Satu MCP server dapat menampilkan tool dari adapter provider yang terpisah. Kontrak
+manifest dan registry awal tersedia di `src/aic_connector/adapters.py`; dokumentasi
+alur otorisasi, policy, token, dan scheduler ada di
+[`docs/CONNECTOR_ADAPTERS.md`](docs/CONNECTOR_ADAPTERS.md).
+
+Registry ini baru fondasi routing metadata: **belum ada adapter API nyata yang
+didaftarkan, OAuth provider belum dikonfigurasi, dan belum ada posting/pengiriman
+eksternal yang dieksekusi**. Setiap layanan tetap membutuhkan otorisasi dan API
+resmi masing-masing. Persetujuan ChatGPT tidak menggantikan OAuth layanan.
 
 ## Prinsip arsitektur
 
 `AI client → MCP host/adapter → policy engine → platform connector → official API`
 
-MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis memberikan dukungan kepada semua model, akses akun, OAuth consent, ataupun izin API platform. Setiap AI client perlu diuji secara terpisah. P0 memakai transport stdio lokal; endpoint internet/HTTPS belum diaktifkan.
+MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis memberikan dukungan kepada semua model, akses akun, OAuth consent, ataupun izin API platform. Setiap AI client perlu diuji secara terpisah. Server P0 lokal memakai stdio; gateway HTTP pada branch ini masih prototipe dan belum dideploy.
 
-## Cakupan P0 yang ada di branch ini
+## Cakupan P0 yang ada
 
 | Komponen | Status P0 |
 |---|---|
-| MCP server memakai SDK Python resmi | Implementasi awal; job import smoke, unit test, dan compile check dijalankan oleh CI |
+| MCP server dengan SDK Python resmi | Implementasi awal; CI menjalankan import, unit test, dan compile check |
+| Tool discovery melalui MCP client | Diuji oleh integration test pada branch perbaikan ini |
 | `connector.list`, `connector.status`, `connector.permissions` | Terimplementasi; seluruh konektor tetap `NOT_CONFIGURED` |
 | `task.create`, `task.status`, `task.cancel` | Terimplementasi untuk task draft; tidak mengeksekusi aksi eksternal |
 | `approval.request` | Membuat permintaan review untuk tindakan sensitif; bukan persetujuan dan bukan eksekusi |
 | `audit.query` | Terimplementasi dengan event tersanitasi |
-| Policy engine | Allowlist, deny-by-default untuk aksi yang tidak dikenal, tindakan sensitif memerlukan approval |
-| OAuth dan token storage | Belum dibuat |
+| OAuth resource-server/token validation | Prototipe introspection RFC 7662 tersedia; identity provider nyata belum dikonfigurasi dan token tidak disimpan oleh aplikasi |
 | Konektor platform dan Android agent | Belum dibuat |
-| Remote MCP/HTTPS, autentikasi jarak jauh | Belum dibuat; jangan diekspos ke internet |
-| State persistence | P0 memakai memori proses; restart akan menghapus task dan audit |
+| Remote MCP/HTTPS | Prototipe Streamable HTTP ada di `aic_connector.gateway`; belum dideploy dan belum diuji dengan identity provider nyata |
+| OAuth resource-server auth | Token introspection RFC 7662 dengan fail-closed checks; konfigurasi issuer/audience/secret masih wajib |
+| Isolasi state gateway | State in-memory dipisahkan berdasarkan subject OAuth dalam satu proses; belum persisten dan bukan isolasi lintas-replica |
+| Rate limiting | Middleware per-IP per proses tersedia; belum diuji di belakang proxy produksi |
+| Persistensi produksi | Belum dibuat; restart menghapus task dan audit |
 
 ## Persyaratan
 
@@ -32,18 +47,56 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 - GitHub Codespaces atau Python environment lokal
 - Tidak memerlukan OpenAI API key untuk menjalankan fondasi P0
 
-## Menjalankan tes
+## Instalasi dan pengujian
 
-Dari root repository:
+Jalankan perintah dari **root repository**, yaitu direktori yang berisi `pyproject.toml`:
 
 ```bash
+python --version
+python -m pip --version
 python -m pip install --upgrade pip
 python -m pip install -e .
+python -m pip show android-ai-universal-connector
+python -m pip show mcp
 python -m unittest discover -s tests -v
 python -m compileall -q src tests
 ```
 
-GitHub Actions menjalankan unit test dan compile check pada Python 3.11 dan 3.12.
+Setelah perubahan instalasi, jika shell masih tidak menemukan command, muat ulang terminal Codespaces lalu periksa lokasi executable:
+
+```python
+python -c "import aic_connector; print(aic_connector.__file__)"
+python -c "from aic_connector.server import main; print('server import OK')"
+python -m pip show -f android-ai-universal-connector
+```
+
+## Pemecahan masalah instalasi
+
+### `Package not found` atau `pip install -e .` gagal
+
+1. Pastikan Codespaces membuka repository ini dan berada di root-nya:
+
+   ```bash
+   pwd
+   ls -la
+   ```
+
+2. Pastikan `pyproject.toml` terlihat pada output `ls`. Jika tidak, pindah ke direktori repository yang benar sebelum memasang package.
+3. Jalankan `python -m pip install -e .` dari direktori tersebut. Jangan memakai `pip install android-ai-universal-connector` sebagai pengganti instalasi editable lokal; package ini dikembangkan dari repository.
+4. Jika gagal, salin **pesan error non-rahasia lengkap** mulai dari baris error pertama sampai akhir. Jangan kirim token, password, atau environment secrets.
+
+### `aic-connector: command not found`
+
+1. Pastikan instalasi editable berhasil dengan `python -m pip show android-ai-universal-connector`.
+2. Jalankan `python -m pip show -f android-ai-universal-connector` untuk melihat file yang dipasang.
+3. Muat ulang terminal setelah instalasi, lalu coba `aic-connector` lagi.
+4. Jalankan fallback berikut untuk memisahkan masalah PATH dari masalah import:
+
+   ```bash
+   python -m aic_connector.server
+   ```
+
+5. Jika fallback berhasil tetapi command belum ditemukan, kemungkinan executable berada di direktori Scripts/bin yang tidak ada di PATH shell. Jika import juga gagal, gunakan error import sebagai petunjuk root cause berikutnya.
 
 ## Menjalankan server MCP lokal
 
@@ -59,7 +112,55 @@ Atau:
 python -m aic_connector.server
 ```
 
-Server berjalan lewat **stdio** untuk digunakan oleh MCP host yang dapat meluncurkan proses lokal. Server tidak membuat URL publik dan tidak boleh dianggap dapat dijangkau langsung oleh ChatGPT mobile hanya karena repository berada di GitHub Codespaces.
+Server lokal berjalan lewat **stdio** untuk MCP host yang dapat meluncurkan proses lokal. Server lokal tidak membuat URL publik dan tidak otomatis dapat dijangkau ChatGPT Android hanya karena repository berada di GitHub Codespaces.
+
+## Container image untuk staging
+
+Repository menyediakan `Dockerfile` dan `.dockerignore` untuk membangun image gateway dengan user non-root. File environment dan kredensial dikecualikan dari build context.
+
+Build lokal dari root repository:
+
+```bash
+docker build -t android-ai-universal-connector:staging .
+```
+
+Jalankan hanya pada jaringan internal di belakang reverse proxy HTTPS tepercaya dan setelah seluruh variabel OAuth gateway dikonfigurasi melalui secret manager:
+
+```bash
+docker run --rm --name aic-gateway \
+  -p 127.0.0.1:8000:8000 \
+  --env-file .env \
+  android-ai-universal-connector:staging
+```
+
+Port dipetakan ke loopback host pada contoh di atas, bukan ke seluruh interface. Jangan membuat file `.env` berisi secret di Git atau membagikannya melalui chat. Container health check memanggil `/health`; health check ini hanya membuktikan proses HTTP hidup, bukan validitas OAuth, persistensi, atau kesiapan produksi.
+
+**Verifikasi status:** Dockerfile sudah ditambahkan ke branch, tetapi image belum dibangun atau dijalankan oleh CI maupun pada mesin pengguna. Tandai hasil build sebagai **NOT RUN** sampai perintah tersebut benar-benar dijalankan.
+
+## Prototipe gateway remote (belum untuk production)
+
+Branch ini juga menyediakan `aic-gateway`, server MCP **Streamable HTTP** terpisah dengan OAuth resource-server authentication. Token opaque diverifikasi melalui endpoint introspection RFC 7662. Server menolak konfigurasi yang belum lengkap; verifier menerima token hanya jika introspection menyatakan aktif dan issuer, audience, expiry, client ID, serta scopes lolos validasi.
+
+Konfigurasikan environment variables melalui secret manager/platform environment, bukan melalui chat atau Git:
+
+- `AIC_MCP_ISSUER_URL` — issuer OAuth yang dipercaya.
+- `AIC_MCP_RESOURCE_URL` — URL publik endpoint MCP yang tepat, biasanya `https://mcp.example.com/mcp`.
+- `AIC_OAUTH_INTROSPECTION_URL` — endpoint introspection resmi dari identity provider.
+- `AIC_OAUTH_CLIENT_ID` dan `AIC_OAUTH_CLIENT_SECRET` — kredensial confidential client untuk introspection.
+- `AIC_MCP_REQUIRED_SCOPES` — daftar scope dipisahkan spasi; default `aic:read`.
+- `AIC_MCP_ALLOWED_ORIGINS` — origin browser yang diizinkan, dipisahkan koma; kosong berarti tidak ada origin browser yang diizinkan.
+- `AIC_MCP_BIND_HOST` dan `AIC_MCP_PORT` — bind address dan port; default hanya `127.0.0.1:8000`.
+- `AIC_TRUSTED_PROXY_IPS` — IP proxy TLS yang boleh memasok forwarded headers; default hanya loopback. Jangan set ke `*`.
+
+Jalankan hanya setelah identity provider memberikan konfigurasi valid:
+
+```bash
+aic-gateway
+```
+
+Untuk staging di container, bind ke interface internal container dan tempatkan server di belakang reverse proxy TLS yang tepercaya. Jangan expose port HTTP mentah ke internet. URL issuer, resource, introspection, dan audience harus sesuai persis dengan kebijakan identity provider. Contoh `.env.example` tidak berisi kredensial nyata.
+
+**Status gateway: prototipe kode saja.** Belum ada staging host, sertifikat HTTPS, OAuth provider yang dikonfigurasi, database persisten, backup/recovery, atau tes ChatGPT/Claude aktual. Isolasi subject dan rate limiting masih berbasis memori satu proses, sehingga belum memenuhi kebutuhan produksi. Jangan nyatakan STAGING READY sampai seluruh komponen diuji di environment staging nyata.
 
 ## Tool MCP yang tersedia
 
@@ -77,10 +178,11 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 ## Keamanan dan batasan
 
 - Jangan masukkan token, password, OAuth client secret, ataupun refresh token ke repository, file contoh, prompt, atau log.
+- File `.env`, credential file umum, private key, dan direktori secret diabaikan oleh Git; periksa file yang sudah pernah di-commit secara terpisah karena `.gitignore` tidak menghapusnya dari riwayat.
 - Semua konektor saat ini `NOT_CONFIGURED`; belum ada akun yang dihubungkan atau API yang diverifikasi.
 - Approval request bukan approval final. P0 tidak menyediakan mekanisme untuk model menyetujui permintaannya sendiri.
 - Store dan audit P0 berada di memori proses dan belum cocok sebagai audit trail produksi.
-- Sebelum remote deployment, implementasikan autentikasi dan otorisasi, HTTPS, validasi Origin/Host, rate limit, persistensi aman, pemisahan pengguna, dan pengujian keamanan.
+- Sebelum remote deployment, verifikasi autentikasi dan otorisasi terhadap identity provider nyata, HTTPS/proxy, validasi Origin/Host, rate limit, persistensi aman, pemisahan pengguna, dan pengujian keamanan. Implementasi prototipe saja belum memenuhi acceptance gate.
 - Sebelum koneksi platform, periksa dokumentasi resmi, OAuth scopes, izin aplikasi, kuota, dan proses review aktual.
 
 ## Roadmap
@@ -95,4 +197,4 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 
 ## Status klaim
 
-Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. Kode yang ada belum membuktikan integrasi eksternal. Lihat branch `feat/p0-mcp-foundation` untuk implementasi P0 yang sedang diuji.
+Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. CI hijau membuktikan job CI lulus; itu tidak membuktikan koneksi OAuth provider, remote deployment, atau kompatibilitas ChatGPT/Claude. Branch ini menambahkan diagnostik instalasi, perlindungan secret lokal, tes tool discovery, serta prototipe gateway terautentikasi.
