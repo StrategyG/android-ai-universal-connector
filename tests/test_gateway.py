@@ -6,10 +6,13 @@ import time
 import unittest
 from unittest.mock import patch
 
+from starlette.testclient import TestClient
+
 from aic_connector.gateway import (
     GatewayConfig,
     IntrospectionTokenVerifier,
     UserScopedStores,
+    create_gateway_app,
 )
 
 
@@ -70,6 +73,10 @@ class GatewayConfigTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "must use HTTPS"):
             _validated_url("resource", "http://mcp.example.test/mcp")
+
+    def test_remote_resource_must_be_exact_mcp_endpoint(self) -> None:
+        config = valid_config()
+        self.assertEqual(config.transport_security().allowed_hosts, ["mcp.example.test"])
 
 
 class IntrospectionVerifierTests(unittest.IsolatedAsyncioTestCase):
@@ -132,6 +139,24 @@ class IntrospectionVerifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(first, stores.for_subject("user-one"))
         with self.assertRaisesRegex(PermissionError, "capacity"):
             stores.for_subject("user-three")
+
+
+class GatewayHTTPTests(unittest.TestCase):
+    def test_mcp_endpoint_rejects_missing_bearer_token(self) -> None:
+        app = create_gateway_app(valid_config())
+        with TestClient(app, base_url="https://mcp.example.test") as client:
+            response = client.post(
+                "/mcp",
+                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+            )
+        self.assertEqual(response.status_code, 401)
+
+    def test_health_route_returns_only_non_sensitive_status(self) -> None:
+        app = create_gateway_app(valid_config())
+        with TestClient(app, base_url="https://mcp.example.test") as client:
+            response = client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok", "service": "aic-connector-gateway"})
 
 
 if __name__ == "__main__":
