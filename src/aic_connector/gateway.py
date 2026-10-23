@@ -9,17 +9,21 @@ from __future__ import annotations
 import logging
 import os
 import time
+from collections import deque
 from dataclasses import dataclass
+from threading import Lock
 from urllib.parse import urlsplit
 
 import httpx2
+import uvicorn
 from mcp.server import MCPServer
+from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import AnyHttpUrl
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from aic_connector.core import StateStore
 from aic_connector.server import register_tools
@@ -37,8 +41,8 @@ def _validated_url(name: str, value: str, *, allow_loopback_http: bool = True) -
             and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
         ):
             raise ValueError(f"{name} must use HTTPS (HTTP is allowed only for loopback testing)")
-    if not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
-        raise ValueError(f"{name} must be an absolute URL without userinfo or fragment")
+    if not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query:
+        raise ValueError(f"{name} must be an absolute URL without userinfo, query, or fragment")
     return value
 
 
@@ -53,6 +57,7 @@ class GatewayConfig:
     allowed_origins: tuple[str, ...]
     bind_host: str = "127.0.0.1"
     port: int = 8000
+    trusted_proxy_ips: str = "127.0.0.1,::1"
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -73,8 +78,8 @@ class GatewayConfig:
             "AIC_OAUTH_INTROSPECTION_URL", required["AIC_OAUTH_INTROSPECTION_URL"]
         )
         resource = urlsplit(resource_url)
-        if resource.query:
-            raise ValueError("AIC_MCP_RESOURCE_URL must not include a query string")
+        if resource.path != "/mcp":
+            raise ValueError("AIC_MCP_RESOURCE_URL must identify the exact /mcp endpoint")
         scopes = tuple(
             scope for scope in os.getenv("AIC_MCP_REQUIRED_SCOPES", "aic:read").split() if scope
         )
@@ -87,8 +92,13 @@ class GatewayConfig:
         )
         for origin in origins:
             parsed_origin = urlsplit(origin)
-            if parsed_origin.scheme not in {"https", "http"} or not parsed_origin.netloc:
-                raise ValueError("AIC_MCP_ALLOWED_ORIGINS must contain absolute origins")
+            if (
+                parsed_origin.scheme not in {"https", "http"}
+                or not parsed_origin.netloc
+                or parsed_origin.username
+                or parsed_origin.password
+            ):
+                raise ValueError("AIC_MCP_ALLOWED_ORIGINS must contain absolute origins without userinfo")
             if parsed_origin.path or parsed_origin.query or parsed_origin.fragment:
                 raise ValueError("AIC_MCP_ALLOWED_ORIGINS entries must be origins, not URLs with paths")
             if parsed_origin.scheme != "https" and parsed_origin.hostname not in {
@@ -113,6 +123,7 @@ class GatewayConfig:
             allowed_origins=origins,
             bind_host=os.getenv("AIC_MCP_BIND_HOST", "127.0.0.1").strip(),
             port=port,
+            trusted_proxy_ips=os.getenv("AIC_TRUSTED_PROXY_IPS", "127.0.0.1,::1").strip(),
         )
 
     def transport_security(self) -> TransportSecuritySettings:
@@ -134,7 +145,7 @@ class IntrospectionTokenVerifier(TokenVerifier):
 
     The introspection response must include active=true, the configured issuer,
     an audience containing the exact MCP resource URL, an unexpired exp, client_id,
-    and scope. Missing or invalid claims fail closed.
+    sub, and scope. Missing or invalid claims fail closed.
     """
 
     def __init__(self, config: GatewayConfig) -> None:
@@ -171,18 +182,100 @@ class IntrospectionTokenVerifier(TokenVerifier):
             return None
 
         client_id = payload.get("client_id")
+        subject = payload.get("sub")
         if not isinstance(client_id, str) or not client_id.strip():
+            return None
+        if not isinstance(subject, str) or not subject.strip():
             return None
         raw_scopes = payload.get("scope", "")
         scopes = raw_scopes.split() if isinstance(raw_scopes, str) else []
-        subject = payload.get("sub")
         return AccessToken(
             token=token,
             client_id=client_id,
             scopes=scopes,
             resource=self._config.resource_url,
-            subject=subject if isinstance(subject, str) else None,
+            subject=subject,
         )
+
+
+class UserScopedStores:
+    """Keep P0 state isolated per authenticated subject within this single process."""
+
+    def __init__(self, max_users: int = 1024) -> None:
+        self._max_users = max_users
+        self._stores: dict[str, StateStore] = {}
+        self._lock = Lock()
+
+    def for_subject(self, subject: str) -> StateStore:
+        if not subject or len(subject) > 256:
+            raise PermissionError("authenticated_subject_required")
+        with self._lock:
+            store = self._stores.get(subject)
+            if store is not None:
+                return store
+            if len(self._stores) >= self._max_users:
+                raise PermissionError("user_store_capacity_reached")
+            store = StateStore()
+            self._stores[subject] = store
+            return store
+
+    def current(self) -> StateStore:
+        token = get_access_token()
+        if token is None or not token.subject:
+            raise PermissionError("authenticated_subject_required")
+        return self.for_subject(token.subject)
+
+
+class RateLimitMiddleware:
+    """Simple per-process sliding-window rate limit for staging smoke tests."""
+
+    def __init__(self, app, requests_per_minute: int = 120, max_clients: int = 4096) -> None:
+        self.app = app
+        self._limit = requests_per_minute
+        self._max_clients = max_clients
+        self._requests: dict[str, deque[float]] = {}
+        self._lock = Lock()
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        client = scope.get("client")
+        key = str(client[0]) if client else "unknown"
+        now = time.monotonic()
+        with self._lock:
+            bucket = self._requests.get(key)
+            if bucket is None:
+                if len(self._requests) >= self._max_clients:
+                    # Prune idle clients; do not evict an active client's rate history.
+                    cutoff = now - 60
+                    stale = [ip for ip, events in self._requests.items() if not events or events[-1] < cutoff]
+                    for ip in stale:
+                        self._requests.pop(ip, None)
+                if len(self._requests) >= self._max_clients:
+                    bucket = None
+                else:
+                    bucket = deque()
+                    self._requests[key] = bucket
+            if bucket is not None:
+                cutoff = now - 60
+                while bucket and bucket[0] <= cutoff:
+                    bucket.popleft()
+                allowed = len(bucket) < self._limit
+                if allowed:
+                    bucket.append(now)
+            else:
+                allowed = False
+        if not allowed:
+            response = Response(
+                content='{"error":"rate_limit_exceeded"}',
+                status_code=429,
+                media_type="application/json",
+                headers={"Retry-After": "60"},
+            )
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 def create_gateway(config: GatewayConfig | None = None) -> MCPServer:
@@ -198,7 +291,8 @@ def create_gateway(config: GatewayConfig | None = None) -> MCPServer:
             validate_token_resource=True,
         ),
     )
-    register_tools(server, StateStore())
+    user_stores = UserScopedStores()
+    register_tools(server, user_stores.current)
 
     @server.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
@@ -207,16 +301,49 @@ def create_gateway(config: GatewayConfig | None = None) -> MCPServer:
     return server
 
 
+def create_gateway_app(config: GatewayConfig | None = None):
+    """Build the protected ASGI app with host/origin checks, body limits and rate limiting."""
+    cfg = config or GatewayConfig.from_env()
+    server = create_gateway(cfg)
+    app = server.streamable_http_app(
+        transport_security=cfg.transport_security(),
+        max_request_body_size=1_048_576,
+    )
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=120, max_clients=4096)
+    if cfg.allowed_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cfg.allowed_origins),
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "Last-Event-ID",
+                "Mcp-Method",
+                "Mcp-Name",
+                "Mcp-Protocol-Version",
+                "Mcp-Session-Id",
+            ],
+            expose_headers=["Mcp-Session-Id"],
+        )
+    return app
+
+
 def main() -> None:
-    """Run authenticated Streamable HTTP; keep behind a trusted HTTPS proxy."""
+    """Run the authenticated gateway; terminate TLS at a trusted reverse proxy."""
     config = GatewayConfig.from_env()
-    server = create_gateway(config)
-    server.run(
-        transport="streamable-http",
+    app = create_gateway_app(config)
+    uvicorn.run(
+        app,
         host=config.bind_host,
         port=config.port,
-        transport_security=config.transport_security(),
-        max_request_body_size=1_048_576,
+        timeout_keep_alive=5,
+        timeout_graceful_shutdown=10,
+        limit_concurrency=100,
+        proxy_headers=True,
+        forwarded_allow_ips=config.trusted_proxy_ips,
     )
 
 
