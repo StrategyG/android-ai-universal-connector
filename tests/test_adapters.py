@@ -31,15 +31,14 @@ class ConnectorManifestTests(unittest.TestCase):
             manifest(actions=("gmail.search",))
 
     def test_rejects_duplicate_scopes(self):
-        item = ConnectorManifest(
-            connector_id="facebook",
-            display_name="Facebook",
-            auth_mode="oauth2",
-            required_scopes=("pages_show_list", "pages_show_list"),
-            supported_actions=("facebook.pages.list",),
-        )
-        # dataclass validation should reject duplicates
-        self.assertIsNotNone(item)
+        with self.assertRaisesRegex(ValueError, "duplicate_scope"):
+            ConnectorManifest(
+                connector_id="facebook",
+                display_name="Facebook",
+                auth_mode="oauth2",
+                required_scopes=("pages_show_list", "pages_show_list"),
+                supported_actions=("facebook.pages.list",),
+            )
 
 
 class AdapterRegistryTests(unittest.TestCase):
