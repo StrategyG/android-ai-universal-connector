@@ -2,7 +2,7 @@
 
 Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat berinteraksi dengan layanan digital dan perangkat Android melalui antarmuka standar, kontrol kebijakan, dan persetujuan manusia.
 
-> **Status saat ini: P0 foundation, belum menjadi plugin mobile yang siap produksi.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, dan unit test. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada OAuth flow, belum ada aplikasi Android, dan belum ada remote MCP deployment.
+> **Status saat ini: P0 lulus CI; gateway remote masih prototipe dan belum dideploy.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, serta prototipe gateway Streamable HTTP yang memvalidasi bearer token melalui OAuth token introspection. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada konfigurasi identity provider nyata, belum ada aplikasi Android, dan belum ada deployment staging/production.
 
 ## Prinsip arsitektur
 
@@ -22,7 +22,9 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 | `audit.query` | Terimplementasi dengan event tersanitasi |
 | OAuth dan token storage | Belum dibuat |
 | Konektor platform dan Android agent | Belum dibuat |
-| Remote MCP/HTTPS, autentikasi jarak jauh | Belum dibuat; jangan diekspos ke internet |
+| Remote MCP/HTTPS | Prototipe Streamable HTTP ada di `aic_connector.gateway`; belum dideploy dan belum diuji dengan identity provider nyata |
+| OAuth resource-server auth | Token introspection RFC 7662 dengan fail-closed checks; konfigurasi issuer/audience/secret masih wajib |
+| Persistensi produksi | Belum dibuat; gateway memakai state in-memory dan belum cocok untuk multi-user/production |
 | State persistence | P0 memakai memori proses; restart akan menghapus task dan audit |
 
 ## Persyaratan
@@ -97,7 +99,31 @@ Atau:
 python -m aic_connector.server
 ```
 
-Server berjalan lewat **stdio** untuk digunakan oleh MCP host yang dapat meluncurkan proses lokal. Server tidak membuat URL publik dan tidak boleh dianggap dapat dijangkau langsung oleh ChatGPT Android hanya karena repository berada di GitHub Codespaces.
+Server lokal berjalan lewat **stdio** untuk MCP host yang dapat meluncurkan proses lokal. Server lokal tidak membuat URL publik dan tidak otomatis dapat dijangkau ChatGPT Android hanya karena repository berada di GitHub Codespaces.
+
+## Prototipe gateway remote (belum untuk production)
+
+Branch ini juga menyediakan `aic-gateway`, server MCP **Streamable HTTP** terpisah dengan OAuth resource-server authentication. Token opaque diverifikasi melalui endpoint introspection RFC 7662. Server menolak konfigurasi yang belum lengkap; verifier menerima token hanya jika introspection menyatakan aktif dan issuer, audience, expiry, client ID, serta scopes lolos validasi.
+
+Konfigurasikan environment variables melalui secret manager/platform environment, bukan melalui chat atau Git:
+
+- `AIC_MCP_ISSUER_URL` — issuer OAuth yang dipercaya.
+- `AIC_MCP_RESOURCE_URL` — URL publik endpoint MCP yang tepat, biasanya `https://mcp.example.com/mcp`.
+- `AIC_OAUTH_INTROSPECTION_URL` — endpoint introspection resmi dari identity provider.
+- `AIC_OAUTH_CLIENT_ID` dan `AIC_OAUTH_CLIENT_SECRET` — kredensial confidential client untuk introspection.
+- `AIC_MCP_REQUIRED_SCOPES` — daftar scope dipisahkan spasi; default `aic:read`.
+- `AIC_MCP_ALLOWED_ORIGINS` — origin browser yang diizinkan, dipisahkan koma; kosong berarti tidak ada origin browser yang diizinkan.
+- `AIC_MCP_BIND_HOST` dan `AIC_MCP_PORT` — bind address dan port; default hanya `127.0.0.1:8000`.
+
+Jalankan hanya setelah identity provider memberikan konfigurasi valid:
+
+```bash
+aic-gateway
+```
+
+Untuk staging di container, bind ke interface internal container dan tempatkan server di belakang reverse proxy TLS yang tepercaya. Jangan expose port HTTP mentah ke internet. URL issuer, resource, introspection, dan audience harus sesuai persis dengan kebijakan identity provider. Contoh `.env.example` tidak berisi kredensial nyata.
+
+**Status gateway: prototipe kode saja.** Belum ada staging host, HTTPS certificate, OAuth provider yang dikonfigurasi, database persisten, multi-user isolation, rate limiting, backup/recovery, atau tes ChatGPT/Claude aktual. Jangan nyatakan STAGING READY sampai semua hal tersebut diuji.
 
 ## Tool MCP yang tersedia
 
@@ -134,4 +160,4 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 
 ## Status klaim
 
-Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. CI hijau hanya membuktikan job yang dijalankan berhasil; itu tidak membuktikan koneksi OAuth, remote deployment, atau kompatibilitas ChatGPT/Claude. Lihat branch `feat/p0-mcp-foundation` untuk fondasi P0 dan branch perbaikan ini untuk perubahan instalasi, perlindungan secret lokal, serta tes tool discovery.
+Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. CI hijau membuktikan job CI lulus; itu tidak membuktikan koneksi OAuth provider, remote deployment, atau kompatibilitas ChatGPT/Claude. Branch ini menambahkan diagnostik instalasi, perlindungan secret lokal, tes tool discovery, serta prototipe gateway terautentikasi.
