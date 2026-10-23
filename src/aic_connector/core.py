@@ -24,6 +24,7 @@ VERIFIED = "VERIFIED"
 BLOCKED = "BLOCKED"
 
 READ_ONLY_ACTIONS = {
+    "connector.list",
     "connector.status",
     "connector.permissions",
     "audit.query",
@@ -127,6 +128,8 @@ def classify_action(action: str) -> tuple[str, str]:
     if not isinstance(action, str) or not action.strip():
         return DENY, "action_missing"
     normalized = action.strip().lower()
+    if len(normalized) > 128:
+        return DENY, "action_too_long"
     if normalized in SENSITIVE_ACTIONS:
         return REQUIRE_APPROVAL, "sensitive_action_requires_human_approval"
     if normalized in READ_ONLY_ACTIONS:
@@ -196,7 +199,7 @@ class StateStore:
 
     def list_connectors(self) -> list[dict[str, Any]]:
         with self._lock:
-            return [dict(item) for item in CONNECTOR_SPECS]
+            return [{**item, "required_scopes": list(item["required_scopes"])} for item in CONNECTOR_SPECS]
 
     def connector_status(self, connector_id: str | None = None) -> dict[str, Any]:
         connectors = self.list_connectors()
@@ -229,11 +232,17 @@ class StateStore:
             raise ValueError("payload must be a JSON object")
         if not isinstance(target, str) or not target.strip():
             raise ValueError("target is required")
-        digest = payload_digest(payload)
+        if len(target.strip()) > 512:
+            raise ValueError("target must be 512 characters or fewer")
+        try:
+            digest = payload_digest(payload)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise ValueError("payload_not_json_serializable") from exc
         decision, reason = classify_action(action)
         with self._lock:
             if decision == DENY:
-                self._event("task.create.denied", action=action, decision=decision, reason=reason)
+                safe_action = action[:128] if isinstance(action, str) else "<invalid>"
+                self._event("task.create.denied", action=safe_action, decision=decision, reason=reason)
                 return {"created": False, "decision": decision, "reason": reason}
             task_id = "task_" + secrets.token_urlsafe(9)
             task = Task(
