@@ -70,6 +70,16 @@ class TaskStoreTests(unittest.TestCase):
         self.assertEqual(self.store.query_audit()["count"] >= 2, True)
         self.assertEqual(self.store._approvals[approval["approval"]["id"]].status, "CANCELLED")
 
+    def test_connector_registry_returns_independent_scope_lists(self):
+        first = self.store.list_connectors()
+        first[0]["required_scopes"].append("unexpected")
+        second = self.store.list_connectors()
+        self.assertNotIn("unexpected", second[0]["required_scopes"])
+
+    def test_oversized_target_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.store.create_task("gmail.draft.create", "x" * 513, {})
+
     def test_unknown_connector_status_does_not_claim_connection(self):
         status = self.store.connector_status("not-a-connector")
         self.assertFalse(status["found"])
