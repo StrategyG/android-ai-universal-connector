@@ -24,8 +24,9 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 | Konektor platform dan Android agent | Belum dibuat |
 | Remote MCP/HTTPS | Prototipe Streamable HTTP ada di `aic_connector.gateway`; belum dideploy dan belum diuji dengan identity provider nyata |
 | OAuth resource-server auth | Token introspection RFC 7662 dengan fail-closed checks; konfigurasi issuer/audience/secret masih wajib |
-| Persistensi produksi | Belum dibuat; gateway memakai state in-memory dan belum cocok untuk multi-user/production |
-| State persistence | P0 memakai memori proses; restart akan menghapus task dan audit |
+| Isolasi state gateway | State in-memory dipisahkan berdasarkan subject OAuth dalam satu proses; belum persisten dan bukan isolasi lintas-replica |
+| Rate limiting | Middleware per-IP per proses tersedia; belum diuji di belakang proxy produksi |
+| Persistensi produksi | Belum dibuat; restart menghapus task dan audit |
 
 ## Persyaratan
 
@@ -114,6 +115,7 @@ Konfigurasikan environment variables melalui secret manager/platform environment
 - `AIC_MCP_REQUIRED_SCOPES` — daftar scope dipisahkan spasi; default `aic:read`.
 - `AIC_MCP_ALLOWED_ORIGINS` — origin browser yang diizinkan, dipisahkan koma; kosong berarti tidak ada origin browser yang diizinkan.
 - `AIC_MCP_BIND_HOST` dan `AIC_MCP_PORT` — bind address dan port; default hanya `127.0.0.1:8000`.
+- `AIC_TRUSTED_PROXY_IPS` — IP proxy TLS yang boleh memasok forwarded headers; default hanya loopback. Jangan set ke `*`.
 
 Jalankan hanya setelah identity provider memberikan konfigurasi valid:
 
@@ -123,7 +125,7 @@ aic-gateway
 
 Untuk staging di container, bind ke interface internal container dan tempatkan server di belakang reverse proxy TLS yang tepercaya. Jangan expose port HTTP mentah ke internet. URL issuer, resource, introspection, dan audience harus sesuai persis dengan kebijakan identity provider. Contoh `.env.example` tidak berisi kredensial nyata.
 
-**Status gateway: prototipe kode saja.** Belum ada staging host, HTTPS certificate, OAuth provider yang dikonfigurasi, database persisten, multi-user isolation, rate limiting, backup/recovery, atau tes ChatGPT/Claude aktual. Jangan nyatakan STAGING READY sampai semua hal tersebut diuji.
+**Status gateway: prototipe kode saja.** Belum ada staging host, sertifikat HTTPS, OAuth provider yang dikonfigurasi, database persisten, backup/recovery, atau tes ChatGPT/Claude aktual. Isolasi subject dan rate limiting masih berbasis memori satu proses, sehingga belum memenuhi kebutuhan produksi. Jangan nyatakan STAGING READY sampai seluruh komponen diuji di environment staging nyata.
 
 ## Tool MCP yang tersedia
 
@@ -145,7 +147,7 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 - Semua konektor saat ini `NOT_CONFIGURED`; belum ada akun yang dihubungkan atau API yang diverifikasi.
 - Approval request bukan approval final. P0 tidak menyediakan mekanisme untuk model menyetujui permintaannya sendiri.
 - Store dan audit P0 berada di memori proses dan belum cocok sebagai audit trail produksi.
-- Sebelum remote deployment, implementasikan autentikasi dan otorisasi, HTTPS, validasi Origin/Host, rate limit, persistensi aman, pemisahan pengguna, dan pengujian keamanan.
+- Sebelum remote deployment, verifikasi autentikasi dan otorisasi terhadap identity provider nyata, HTTPS/proxy, validasi Origin/Host, rate limit, persistensi aman, pemisahan pengguna, dan pengujian keamanan. Implementasi prototipe saja belum memenuhi acceptance gate.
 - Sebelum koneksi platform, periksa dokumentasi resmi, OAuth scopes, izin aplikasi, kuota, dan proses review aktual.
 
 ## Roadmap
