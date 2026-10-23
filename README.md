@@ -8,7 +8,7 @@ Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat ber
 
 `AI client → MCP host/adapter → policy engine → platform connector → official API`
 
-MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis memberikan dukungan kepada semua model, akses akun, OAuth consent, ataupun izin API platform. Setiap AI client perlu diuji secara terpisah. P0 memakai transport stdio lokal; endpoint internet/HTTPS belum diaktifkan.
+MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis memberikan dukungan kepada semua model, akses akun, OAuth consent, ataupun izin API platform. Setiap AI client perlu diuji secara terpisah. Server P0 lokal memakai stdio; gateway HTTP pada branch ini masih prototipe dan belum dideploy.
 
 ## Cakupan P0 yang ada
 
@@ -20,7 +20,7 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 | `task.create`, `task.status`, `task.cancel` | Terimplementasi untuk task draft; tidak mengeksekusi aksi eksternal |
 | `approval.request` | Membuat permintaan review untuk tindakan sensitif; bukan persetujuan dan bukan eksekusi |
 | `audit.query` | Terimplementasi dengan event tersanitasi |
-| OAuth dan token storage | Belum dibuat |
+| OAuth resource-server/token validation | Prototipe introspection RFC 7662 tersedia; identity provider nyata belum dikonfigurasi dan token tidak disimpan oleh aplikasi |
 | Konektor platform dan Android agent | Belum dibuat |
 | Remote MCP/HTTPS | Prototipe Streamable HTTP ada di `aic_connector.gateway`; belum dideploy dan belum diuji dengan identity provider nyata |
 | OAuth resource-server auth | Token introspection RFC 7662 dengan fail-closed checks; konfigurasi issuer/audience/secret masih wajib |
