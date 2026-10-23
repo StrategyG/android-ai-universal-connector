@@ -14,7 +14,7 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 
 | Komponen | Status P0 |
 |---|---|
-| MCP server memakai SDK Python resmi | Implementasi awal, perlu CI verification |
+| MCP server memakai SDK Python resmi | Implementasi awal; job import smoke, unit test, dan compile check dijalankan oleh CI |
 | `connector.list`, `connector.status`, `connector.permissions` | Terimplementasi; seluruh konektor tetap `NOT_CONFIGURED` |
 | `task.create`, `task.status`, `task.cancel` | Terimplementasi untuk task draft; tidak mengeksekusi aksi eksternal |
 | `approval.request` | Membuat permintaan review untuk tindakan sensitif; bukan persetujuan dan bukan eksekusi |
