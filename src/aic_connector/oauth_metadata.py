@@ -15,13 +15,6 @@ from starlette.responses import JSONResponse
 def protected_resource_metadata(config) -> dict[str, object]:
     """Return RFC 9728 metadata for the configured MCP resource."""
     resource = config.resource_url
-    parsed = urlsplit(resource)
-    # RFC 9728 appends a resource path to the well-known path when the resource
-    # identifier itself contains a path (e.g. /mcp).
-    well_known_path = "/.well-known/oauth-protected-resource"
-    resource_path = parsed.path.rstrip("/")
-    metadata_path = well_known_path + resource_path
-    metadata_url = urlunsplit((parsed.scheme, parsed.netloc, metadata_path, "", ""))
     return {
         "resource": resource,
         "authorization_servers": [config.issuer_url],
