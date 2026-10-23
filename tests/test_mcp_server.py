@@ -31,7 +31,7 @@ class MCPDiscoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(EXPECTED_TOOLS.issubset(names))
 
             result = await client.call_tool("connector.list", {})
-            self.assertFalse(result.isError)
+            self.assertFalse(result.is_error)
             self.assertIsNotNone(result.structured_content)
             self.assertIn("connectors", result.structured_content)
 
