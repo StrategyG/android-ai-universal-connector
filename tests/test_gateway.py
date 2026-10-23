@@ -131,6 +131,22 @@ class IntrospectionVerifierTests(unittest.IsolatedAsyncioTestCase):
                 result = await IntrospectionTokenVerifier(config).verify_token("opaque-test-token")
             self.assertIsNone(result)
 
+    async def test_token_missing_required_scope_is_rejected(self) -> None:
+        config = valid_config()
+        payload = {
+            "active": True,
+            "iss": config.issuer_url,
+            "aud": config.resource_url,
+            "exp": time.time() + 60,
+            "client_id": "ai-client",
+            "sub": "user-123",
+            "scope": "profile:read",
+        }
+        fake = _FakeClient(payload)
+        with patch("aic_connector.gateway.httpx2.AsyncClient", return_value=fake):
+            result = await IntrospectionTokenVerifier(config).verify_token("opaque-test-token")
+        self.assertIsNone(result)
+
     def test_user_stores_are_isolated_by_subject(self) -> None:
         stores = UserScopedStores(max_users=2)
         first = stores.for_subject("user-one")
