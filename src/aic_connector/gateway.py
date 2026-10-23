@@ -189,6 +189,10 @@ class IntrospectionTokenVerifier(TokenVerifier):
             return None
         raw_scopes = payload.get("scope", "")
         scopes = raw_scopes.split() if isinstance(raw_scopes, str) else []
+        # Fail closed here as well as in the MCP SDK middleware. This keeps
+        # verifier behavior safe and independently testable across SDK versions.
+        if not set(self._config.required_scopes).issubset(set(scopes)):
+            return None
         return AccessToken(
             token=token,
             client_id=client_id,
