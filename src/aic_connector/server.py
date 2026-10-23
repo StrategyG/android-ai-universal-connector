@@ -38,7 +38,7 @@ def task_create(action: str, target: str, payload_json: str = "{}") -> dict[str,
         return {"created": False, "decision": "DENY", "reason": "payload_too_large"}
     try:
         payload = json.loads(payload_json)
-    except (TypeError, json.JSONDecodeError):
+    except (TypeError, json.JSONDecodeError, RecursionError):
         return {"created": False, "decision": "DENY", "reason": "payload_json_invalid"}
     if not isinstance(payload, dict):
         return {"created": False, "decision": "DENY", "reason": "payload_must_be_object"}
