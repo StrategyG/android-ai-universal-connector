@@ -4,6 +4,18 @@ Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat ber
 
 > **Status saat ini: P0 lulus CI; gateway remote masih prototipe dan belum dideploy.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, serta prototipe gateway Streamable HTTP yang memvalidasi bearer token melalui OAuth token introspection. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada konfigurasi identity provider nyata, belum ada aplikasi Android, dan belum ada deployment staging/production.
 
+## Arsitektur adapter multi-aplikasi
+
+Satu MCP server dapat menampilkan tool dari adapter provider yang terpisah. Kontrak
+manifest dan registry awal tersedia di `src/aic_connector/adapters.py`; dokumentasi
+alur otorisasi, policy, token, dan scheduler ada di
+[`docs/CONNECTOR_ADAPTERS.md`](docs/CONNECTOR_ADAPTERS.md).
+
+Registry ini baru fondasi routing metadata: **belum ada adapter API nyata yang
+didaftarkan, OAuth provider belum dikonfigurasi, dan belum ada posting/pengiriman
+eksternal yang dieksekusi**. Setiap layanan tetap membutuhkan otorisasi dan API
+resmi masing-masing. Persetujuan ChatGPT tidak menggantikan OAuth layanan.
+
 ## Prinsip arsitektur
 
 `AI client → MCP host/adapter → policy engine → platform connector → official API`
