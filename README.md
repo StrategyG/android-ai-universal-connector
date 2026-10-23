@@ -16,6 +16,13 @@ didaftarkan, OAuth provider belum dikonfigurasi, dan belum ada posting/pengirima
 eksternal yang dieksekusi**. Setiap layanan tetap membutuhkan otorisasi dan API
 resmi masing-masing. Persetujuan ChatGPT tidak menggantikan OAuth layanan.
 
+Untuk persiapan koneksi server MCP kustom ke ChatGPT, lihat
+[`docs/CHATGPT_MCP_OAUTH.md`](docs/CHATGPT_MCP_OAUTH.md). Gateway menambahkan
+metadata protected-resource RFC 9728 dan discovery challenge, tetapi tetap
+membutuhkan authorization server OAuth/OIDC eksternal yang benar-benar memenuhi
+MCP OAuth, deployment HTTPS, dan pengujian login end-to-end. Ini belum berarti
+login ChatGPT sudah berhasil atau siap dipakai di produksi.
+
 ## Prinsip arsitektur
 
 `AI client → MCP host/adapter → policy engine → platform connector → official API`
