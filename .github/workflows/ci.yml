@@ -38,3 +38,5 @@ jobs:
         run: python -c "from aic_connector.server import main, mcp; assert callable(main) and mcp is not None; print('MCP server import OK')"
       - name: Compile Python files
         run: python -m compileall -q src tests
+      - name: Build gateway container image
+        run: docker build --tag android-ai-universal-connector:ci .
