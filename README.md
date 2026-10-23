@@ -102,6 +102,29 @@ python -m aic_connector.server
 
 Server lokal berjalan lewat **stdio** untuk MCP host yang dapat meluncurkan proses lokal. Server lokal tidak membuat URL publik dan tidak otomatis dapat dijangkau ChatGPT Android hanya karena repository berada di GitHub Codespaces.
 
+## Container image untuk staging
+
+Repository menyediakan `Dockerfile` dan `.dockerignore` untuk membangun image gateway dengan user non-root. File environment dan kredensial dikecualikan dari build context.
+
+Build lokal dari root repository:
+
+```bash
+docker build -t android-ai-universal-connector:staging .
+```
+
+Jalankan hanya pada jaringan internal di belakang reverse proxy HTTPS tepercaya dan setelah seluruh variabel OAuth gateway dikonfigurasi melalui secret manager:
+
+```bash
+docker run --rm --name aic-gateway \
+  -p 127.0.0.1:8000:8000 \
+  --env-file .env \
+  android-ai-universal-connector:staging
+```
+
+Port dipetakan ke loopback host pada contoh di atas, bukan ke seluruh interface. Jangan membuat file `.env` berisi secret di Git atau membagikannya melalui chat. Container health check memanggil `/health`; health check ini hanya membuktikan proses HTTP hidup, bukan validitas OAuth, persistensi, atau kesiapan produksi.
+
+**Verifikasi status:** Dockerfile sudah ditambahkan ke branch, tetapi image belum dibangun atau dijalankan oleh CI maupun pada mesin pengguna. Tandai hasil build sebagai **NOT RUN** sampai perintah tersebut benar-benar dijalankan.
+
 ## Prototipe gateway remote (belum untuk production)
 
 Branch ini juga menyediakan `aic-gateway`, server MCP **Streamable HTTP** terpisah dengan OAuth resource-server authentication. Token opaque diverifikasi melalui endpoint introspection RFC 7662. Server menolak konfigurasi yang belum lengkap; verifier menerima token hanya jika introspection menyatakan aktif dan issuer, audience, expiry, client ID, serta scopes lolos validasi.
