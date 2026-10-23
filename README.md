@@ -198,3 +198,24 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 ## Status klaim
 
 Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. CI hijau membuktikan job CI lulus; itu tidak membuktikan koneksi OAuth provider, remote deployment, atau kompatibilitas ChatGPT/Claude. Branch ini menambahkan diagnostik instalasi, perlindungan secret lokal, tes tool discovery, serta prototipe gateway terautentikasi.
+
+
+## Universal MCP provider setup wizard
+
+The repository now includes an initial safe setup preflight for Google, Google
+Drive, YouTube, Facebook Pages, Instagram Professional, and Shopee Open Platform.
+It lists setup steps and checks whether required environment-variable names are
+present without exposing their values:
+
+```bash
+aic-setup
+aic-setup --provider google_drive
+aic-setup --provider youtube --provider instagram
+aic-setup --json
+```
+
+**Important:** this is a configuration preflight, not a live account connection.
+It does not perform OAuth, save tokens, or call provider APIs; all providers
+remain unconnected until real provider authorization and API health checks are
+implemented and verified. See [the setup guide](docs/UNIVERSAL_MCP_SETUP.md)
+for provider requirements and current limitations.
