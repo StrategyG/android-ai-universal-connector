@@ -2,7 +2,7 @@
 
 Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat berinteraksi dengan layanan digital dan perangkat Android melalui antarmuka standar, kontrol kebijakan, dan persetujuan manusia.
 
-> **Status saat ini: P0 foundation, belum menjadi plugin mobile yang siap produksi.** Branch ini menambahkan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, dan unit test. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada OAuth flow, belum ada aplikasi Android, dan belum ada remote MCP deployment.
+> **Status saat ini: P0 foundation, belum menjadi plugin mobile yang siap produksi.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, dan unit test. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada OAuth flow, belum ada aplikasi Android, dan belum ada remote MCP deployment.
 
 ## Prinsip arsitektur
 
@@ -10,16 +10,16 @@ Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat ber
 
 MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis memberikan dukungan kepada semua model, akses akun, OAuth consent, ataupun izin API platform. Setiap AI client perlu diuji secara terpisah. P0 memakai transport stdio lokal; endpoint internet/HTTPS belum diaktifkan.
 
-## Cakupan P0 yang ada di branch ini
+## Cakupan P0 yang ada
 
 | Komponen | Status P0 |
 |---|---|
-| MCP server memakai SDK Python resmi | Implementasi awal; job import smoke, unit test, dan compile check dijalankan oleh CI |
+| MCP server dengan SDK Python resmi | Implementasi awal; CI menjalankan import, unit test, dan compile check |
+| Tool discovery melalui MCP client | Diuji oleh integration test pada branch perbaikan ini |
 | `connector.list`, `connector.status`, `connector.permissions` | Terimplementasi; seluruh konektor tetap `NOT_CONFIGURED` |
 | `task.create`, `task.status`, `task.cancel` | Terimplementasi untuk task draft; tidak mengeksekusi aksi eksternal |
 | `approval.request` | Membuat permintaan review untuk tindakan sensitif; bukan persetujuan dan bukan eksekusi |
 | `audit.query` | Terimplementasi dengan event tersanitasi |
-| Policy engine | Allowlist, deny-by-default untuk aksi yang tidak dikenal, tindakan sensitif memerlukan approval |
 | OAuth dan token storage | Belum dibuat |
 | Konektor platform dan Android agent | Belum dibuat |
 | Remote MCP/HTTPS, autentikasi jarak jauh | Belum dibuat; jangan diekspos ke internet |
@@ -32,18 +32,56 @@ MCP menstandarkan cara host AI menemukan dan memanggil tools; MCP tidak otomatis
 - GitHub Codespaces atau Python environment lokal
 - Tidak memerlukan OpenAI API key untuk menjalankan fondasi P0
 
-## Menjalankan tes
+## Instalasi dan pengujian
 
-Dari root repository:
+Jalankan perintah dari **root repository**, yaitu direktori yang berisi `pyproject.toml`:
 
 ```bash
+python --version
+python -m pip --version
 python -m pip install --upgrade pip
 python -m pip install -e .
+python -m pip show android-ai-universal-connector
+python -m pip show mcp
 python -m unittest discover -s tests -v
 python -m compileall -q src tests
 ```
 
-GitHub Actions menjalankan unit test dan compile check pada Python 3.11 dan 3.12.
+Setelah perubahan instalasi, jika shell masih tidak menemukan command, muat ulang terminal Codespaces lalu periksa lokasi executable:
+
+```python
+python -c "import aic_connector; print(aic_connector.__file__)"
+python -c "from aic_connector.server import main; print('server import OK')"
+python -m pip show -f android-ai-universal-connector
+```
+
+## Pemecahan masalah instalasi
+
+### `Package not found` atau `pip install -e .` gagal
+
+1. Pastikan Codespaces membuka repository ini dan berada di root-nya:
+
+   ```bash
+   pwd
+   ls -la
+   ```
+
+2. Pastikan `pyproject.toml` terlihat pada output `ls`. Jika tidak, pindah ke direktori repository yang benar sebelum memasang package.
+3. Jalankan `python -m pip install -e .` dari direktori tersebut. Jangan memakai `pip install android-ai-universal-connector` sebagai pengganti instalasi editable lokal; package ini dikembangkan dari repository.
+4. Jika gagal, salin **pesan error non-rahasia lengkap** mulai dari baris error pertama sampai akhir. Jangan kirim token, password, atau environment secrets.
+
+### `aic-connector: command not found`
+
+1. Pastikan instalasi editable berhasil dengan `python -m pip show android-ai-universal-connector`.
+2. Jalankan `python -m pip show -f android-ai-universal-connector` untuk melihat file yang dipasang.
+3. Muat ulang terminal setelah instalasi, lalu coba `aic-connector` lagi.
+4. Jalankan fallback berikut untuk memisahkan masalah PATH dari masalah import:
+
+   ```bash
+   python -m aic_connector.server
+   ```
+
+5. Jika fallback berhasil tetapi command belum ditemukan, kemungkinan executable berada di direktori Scripts/bin yang tidak ada di PATH shell. Jika import juga gagal, gunakan error import sebagai petunjuk root cause berikutnya.
 
 ## Menjalankan server MCP lokal
 
@@ -59,7 +97,7 @@ Atau:
 python -m aic_connector.server
 ```
 
-Server berjalan lewat **stdio** untuk digunakan oleh MCP host yang dapat meluncurkan proses lokal. Server tidak membuat URL publik dan tidak boleh dianggap dapat dijangkau langsung oleh ChatGPT mobile hanya karena repository berada di GitHub Codespaces.
+Server berjalan lewat **stdio** untuk digunakan oleh MCP host yang dapat meluncurkan proses lokal. Server tidak membuat URL publik dan tidak boleh dianggap dapat dijangkau langsung oleh ChatGPT Android hanya karena repository berada di GitHub Codespaces.
 
 ## Tool MCP yang tersedia
 
@@ -77,6 +115,7 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 ## Keamanan dan batasan
 
 - Jangan masukkan token, password, OAuth client secret, ataupun refresh token ke repository, file contoh, prompt, atau log.
+- File `.env`, credential file umum, private key, dan direktori secret diabaikan oleh Git; periksa file yang sudah pernah di-commit secara terpisah karena `.gitignore` tidak menghapusnya dari riwayat.
 - Semua konektor saat ini `NOT_CONFIGURED`; belum ada akun yang dihubungkan atau API yang diverifikasi.
 - Approval request bukan approval final. P0 tidak menyediakan mekanisme untuk model menyetujui permintaannya sendiri.
 - Store dan audit P0 berada di memori proses dan belum cocok sebagai audit trail produksi.
@@ -95,4 +134,4 @@ Tindakan yang belum terdaftar di allowlist ditolak. Tindakan sensitif seperti me
 
 ## Status klaim
 
-Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. Kode yang ada belum membuktikan integrasi eksternal. Lihat branch `feat/p0-mcp-foundation` untuk implementasi P0 yang sedang diuji.
+Keberhasilan build, test, koneksi akun, dan kompatibilitas klien harus didukung hasil aktual. CI hijau hanya membuktikan job yang dijalankan berhasil; itu tidak membuktikan koneksi OAuth, remote deployment, atau kompatibilitas ChatGPT/Claude. Lihat branch `feat/p0-mcp-foundation` untuk fondasi P0 dan branch perbaikan ini untuk perubahan instalasi, perlindungan secret lokal, serta tes tool discovery.
