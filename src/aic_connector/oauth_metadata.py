@@ -9,7 +9,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit, urlunsplit
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 
 
 def protected_resource_metadata(config) -> dict[str, object]:
@@ -26,7 +26,6 @@ def protected_resource_metadata(config) -> dict[str, object]:
         "resource": resource,
         "authorization_servers": [config.issuer_url],
         "scopes_supported": list(config.required_scopes),
-        "resource_documentation": metadata_url,
     }
 
 
