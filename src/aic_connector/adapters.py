@@ -34,6 +34,8 @@ class ConnectorManifest:
             raise ValueError("auth_mode_unsupported")
         if any(not isinstance(scope, str) or not scope.strip() for scope in self.required_scopes):
             raise ValueError("scope_invalid")
+        if self.auth_mode == "oauth2" and not self.required_scopes:
+            raise ValueError("oauth2_requires_scopes")
         if len(set(self.required_scopes)) != len(self.required_scopes):
             raise ValueError("duplicate_scope")
         if len(set(self.supported_actions)) != len(self.supported_actions):
