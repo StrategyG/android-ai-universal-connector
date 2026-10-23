@@ -6,7 +6,11 @@ import time
 import unittest
 from unittest.mock import patch
 
-from aic_connector.gateway import GatewayConfig, IntrospectionTokenVerifier
+from aic_connector.gateway import (
+    GatewayConfig,
+    IntrospectionTokenVerifier,
+    UserScopedStores,
+)
 
 
 def valid_config() -> GatewayConfig:
@@ -62,8 +66,9 @@ class GatewayConfigTests(unittest.TestCase):
                 GatewayConfig.from_env()
 
     def test_public_http_resource_is_rejected(self) -> None:
+        from aic_connector.gateway import _validated_url
+
         with self.assertRaisesRegex(ValueError, "must use HTTPS"):
-            from aic_connector.gateway import _validated_url
             _validated_url("resource", "http://mcp.example.test/mcp")
 
 
@@ -86,6 +91,7 @@ class IntrospectionVerifierTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.client_id, "ai-client")
         self.assertEqual(result.scopes, ["aic:read"])
         self.assertEqual(result.resource, config.resource_url)
+        self.assertEqual(result.subject, "user-123")
 
     async def test_inactive_token_is_rejected(self) -> None:
         config = valid_config()
@@ -94,30 +100,38 @@ class IntrospectionVerifierTests(unittest.IsolatedAsyncioTestCase):
             result = await IntrospectionTokenVerifier(config).verify_token("opaque-test-token")
         self.assertIsNone(result)
 
-    async def test_wrong_audience_and_expired_token_are_rejected(self) -> None:
+    async def test_wrong_audience_expiry_or_subject_is_rejected(self) -> None:
         config = valid_config()
-        for payload in (
-            {
-                "active": True,
-                "iss": config.issuer_url,
-                "aud": "https://other.example.test/mcp",
-                "exp": time.time() + 60,
-                "client_id": "ai-client",
-                "scope": "aic:read",
-            },
-            {
-                "active": True,
-                "iss": config.issuer_url,
-                "aud": config.resource_url,
-                "exp": time.time() - 60,
-                "client_id": "ai-client",
-                "scope": "aic:read",
-            },
+        base = {
+            "active": True,
+            "iss": config.issuer_url,
+            "aud": config.resource_url,
+            "exp": time.time() + 60,
+            "client_id": "ai-client",
+            "sub": "user-123",
+            "scope": "aic:read",
+        }
+        bad_payloads = []
+        for changes in (
+            {"aud": "https://other.example.test/mcp"},
+            {"exp": time.time() - 60},
+            {"sub": ""},
         ):
+            bad_payloads.append({**base, **changes})
+        for payload in bad_payloads:
             fake = _FakeClient(payload)
             with patch("aic_connector.gateway.httpx2.AsyncClient", return_value=fake):
                 result = await IntrospectionTokenVerifier(config).verify_token("opaque-test-token")
             self.assertIsNone(result)
+
+    def test_user_stores_are_isolated_by_subject(self) -> None:
+        stores = UserScopedStores(max_users=2)
+        first = stores.for_subject("user-one")
+        second = stores.for_subject("user-two")
+        self.assertIsNot(first, second)
+        self.assertIs(first, stores.for_subject("user-one"))
+        with self.assertRaisesRegex(PermissionError, "capacity"):
+            stores.for_subject("user-three")
 
 
 if __name__ == "__main__":
