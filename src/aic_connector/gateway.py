@@ -62,6 +62,13 @@ class GatewayConfig:
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
+        environment = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower()
+        if environment in {"production", "prod"}:
+            raise RuntimeError(
+                "The Android Connector remote MCP gateway is a development prototype; "
+                "Cataran production must use IM19 as the single MCP gateway and run this "
+                "repository only as a local stdio adapter."
+            )
         required = {
             "AIC_MCP_ISSUER_URL": os.getenv("AIC_MCP_ISSUER_URL", ""),
             "AIC_MCP_RESOURCE_URL": os.getenv("AIC_MCP_RESOURCE_URL", ""),
