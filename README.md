@@ -2,7 +2,7 @@
 
 Fondasi konektor AI multi-model yang dirancang agar berbagai assistant dapat berinteraksi dengan layanan digital dan perangkat Android melalui antarmuka standar, kontrol kebijakan, dan persetujuan manusia.
 
-> **Status saat ini: P0 lulus CI; gateway remote masih prototipe dan belum dideploy.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, serta prototipe gateway Streamable HTTP yang memvalidasi bearer token melalui OAuth token introspection. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada konfigurasi identity provider nyata, belum ada aplikasi Android, dan belum ada deployment staging/production.
+> **Status saat ini: adapter lokal stdio; remote gateway hanya prototipe development dan ditolak saat `APP_ENV=production`. IM19 adalah satu-satunya MCP gateway Cataran.** Branch ini menyediakan server MCP lokal berbasis stdio, registry konektor, policy allowlist, task draft, approval request, audit event, serta prototipe gateway Streamable HTTP yang memvalidasi bearer token melalui OAuth token introspection. Belum ada konektor Gmail/YouTube/Meta/TikTok/Shopee yang melakukan panggilan API nyata, belum ada konfigurasi identity provider nyata, belum ada aplikasi Android, dan belum ada deployment staging/production.
 
 ## Arsitektur adapter multi-aplikasi
 
@@ -226,3 +226,8 @@ It does not perform OAuth, save tokens, or call provider APIs; all providers
 remain unconnected until real provider authorization and API health checks are
 implemented and verified. See [the setup guide](docs/UNIVERSAL_MCP_SETUP.md)
 for provider requirements and current limitations.
+
+
+## Cataran platform boundary
+
+Dalam deployment Cataran, repository ini hanya menyediakan adapter lokal melalui MCP stdio yang dikelola oleh IM19. Perintah `aic-gateway` adalah prototipe remote gateway untuk pengujian development dan secara eksplisit menolak startup ketika `APP_ENV=production`. Jangan mempublikasikan endpoint MCP dari repository ini atau mengonfigurasi gateway kedua. Semua remote MCP discovery, authentication, authorization, egress policy dan audit untuk Cataran harus melewati IM19.
