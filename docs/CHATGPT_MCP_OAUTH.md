@@ -65,3 +65,11 @@ This stage does not implement an OAuth authorization server, does not connect
 Google/Meta/Shopee accounts, does not issue tokens, and does not claim a ChatGPT
 login has succeeded. The documented client is ChatGPT web; custom MCP server
 connections are not supported from ChatGPT mobile.
+
+
+## Cataran deployment restriction
+
+This repository's remote Streamable HTTP gateway is a development prototype. It now refuses startup when
+`APP_ENV=production`. Cataran production must route all remote MCP access through IM19, the sole MCP
+gateway. Run this connector as a local stdio adapter under an explicitly authorized IM19 worker/host.
+Do not expose a second public MCP endpoint from this repository.

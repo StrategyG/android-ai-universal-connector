@@ -56,6 +56,17 @@ class _FakeClient:
 
 
 class GatewayConfigTests(unittest.TestCase):
+
+    def test_remote_gateway_is_disabled_in_production(self) -> None:
+        with patch.dict(os.environ, {"APP_ENV": "production"}, clear=False):
+            with self.assertRaisesRegex(RuntimeError, "IM19 as the single MCP gateway"):
+                GatewayConfig.from_env()
+
+    def test_remote_gateway_is_disabled_for_prod_alias(self) -> None:
+        with patch.dict(os.environ, {"APP_ENV": "prod"}, clear=False):
+            with self.assertRaisesRegex(RuntimeError, "IM19 as the single MCP gateway"):
+                GatewayConfig.from_env()
+
     def test_missing_environment_is_rejected(self) -> None:
         names = (
             "AIC_MCP_ISSUER_URL",
